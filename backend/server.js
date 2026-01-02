@@ -19,7 +19,13 @@ if (!fs.existsSync(pdfFolder)) fs.mkdirSync(pdfFolder, { recursive: true });
 app.use("/api/form", formRoutes);
 
 // serve pdf files
-app.use("/public/pdf", express.static(pdfFolder));
+app.use("/public/pdf", express.static(pdfFolder, {
+  setHeaders: (res) => {
+    res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
+    res.setHeader("Pragma", "no-cache");
+    res.setHeader("Expires", "0");
+  }
+}));
 
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
