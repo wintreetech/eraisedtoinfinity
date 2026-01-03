@@ -3,6 +3,11 @@ import axios from "axios";
 import emailjs from "@emailjs/browser";
 import { questions } from "../utils/questions";
 import logo from "../assets/einfinity-logo-final.png"; 
+import { calculateVRIFromAnswers } from "../utils/calculateScore";
+import { generateValuationPdfBlob } from "../utils/generatePdfFront";
+import { openPdfInNewTab } from "../utils/openPdf";
+
+
 
 const LS = {
 	STEP: "vr_step",
@@ -272,13 +277,14 @@ const generateReport = async ({ action }) => {
     })
   );
 
-  const env = import.meta.env.VITE_ENV;
-const prodUrl = import.meta.env.VITE_PROD_URL;
-const localUrl = import.meta.env.VITE_LOCAL_URL;
+  const isLocalhost =
+    window.location.hostname === "localhost" ||
+    window.location.hostname === "127.0.0.1";
 
-  const apiUrl = env === 'prod'
-  ? prodUrl
-  : localUrl;
+  const apiUrl = (isLocalhost
+    ? import.meta.env.VITE_LOCAL_URL
+    : import.meta.env.VITE_PROD_URL
+  )?.replace(/\/$/, ""); // remove trailing slash
 
   const backendRes = await fetch(`${apiUrl}/api/form/submit`, {
     method: "POST",
@@ -626,20 +632,54 @@ const localUrl = import.meta.env.VITE_LOCAL_URL;
 
   const meta = getStageMeta(VRI);
 
-  const handleDownloadPdf = async () => {
+//   const handleDownloadPdf = async () => {
+//   try {
+//     setDownloadLoading(true);
+
+//     const data = await generateReport({ action: "download" });
+//     if (!data.pdfUrl) {
+//       alert("PDF link not received from backend.");
+//       return;
+//     }
+
+//     window.open(`${data.pdfUrl}?v=${Date.now()}`, "_blank", "noopener,noreferrer");
+//   } catch (err) {
+//     console.error("Download Error:", err);
+//     alert(err.message || "Something went wrong while downloading.");
+//   } finally {
+//     setDownloadLoading(false);
+//   }
+// };
+
+const handleDownloadPdf = async () => {
   try {
     setDownloadLoading(true);
 
-    const data = await generateReport({ action: "download" });
-    if (!data.pdfUrl) {
-      alert("PDF link not received from backend.");
-      return;
-    }
+    const assessmentDate = new Date().toLocaleDateString("en-GB", {
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+    });
 
-    window.open(`${data.pdfUrl}?v=${Date.now()}`, "_blank", "noopener,noreferrer");
+    const submission = {
+      form: { ...form, assessmentDate },
+      answers: answersArr,
+      totalScore,
+      VRI,
+      category:
+        VRI <= 40 ? "Foundation Stage" : VRI <= 60 ? "Structured Stage" : VRI <= 80 ? "Scalable Stage" : "Valuation Ready",
+      interpretation: "", // optional
+    };
+
+    const { url } = await generateValuationPdfBlob(submission, {
+      logoUrl: logo, // your imported logo from assets
+    });
+
+    openPdfInNewTab(url);
+    setTimeout(() => URL.revokeObjectURL(url), 60_000);
   } catch (err) {
-    console.error("Download Error:", err);
-    alert(err.message || "Something went wrong while downloading.");
+    console.error("PDF Error:", err);
+    alert(err?.message || "Failed to generate PDF");
   } finally {
     setDownloadLoading(false);
   }

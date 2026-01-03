@@ -3,7 +3,7 @@ import AssessmentForm from "./components/AssessmentForm";
 function App() {
 	return (
 		<>
-			<div className="min-h-screen bg-base-200">
+			<div data-theme="light" style={{ colorScheme: "light" }} className="min-h-screen bg-white">
 				<AssessmentForm />
 			</div>
 		</>
