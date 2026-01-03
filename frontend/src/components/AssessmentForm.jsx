@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import axios from "axios";
 import emailjs from "@emailjs/browser";
 import { questions } from "../utils/questions";
+import logo from "../assets/einfinity-logo-final.png"; 
 
 const LS = {
 	STEP: "vr_step",
@@ -28,6 +29,8 @@ const defaultForm = {
 };
 
 export default function AssessmentForm() {
+  const [emailLoading, setEmailLoading] = useState(false);
+const [downloadLoading, setDownloadLoading] = useState(false);
 	const [loading, setLoading] = useState(false);
 	const [step, setStep] = useState(Number(localStorage.getItem(LS.STEP)) || 1);
 	const [qIdx, setQIdx] = useState(Number(localStorage.getItem(LS.QIDX)) || 0);
@@ -185,79 +188,21 @@ const [sending, setSending] = useState(false);
 };
 
 
-	const submitToBackendAndEmail = async () => {
+const submitToBackendAndEmail = async () => {
+  if (isLive) {
+    alert("Email sending will be enabled once the project is fully live.");
+    return;
+  }
+
   try {
-    setLoading(true);
-    setSending(true);
-
-    const stage =
-      VRI <= 40
-        ? "Foundation Stage"
-        : VRI <= 60
-        ? "Structured Stage"
-        : VRI <= 80
-        ? "Scalable Stage"
-        : "Valuation Ready";
-
-    // ✅ Auto-save locally
-    localStorage.setItem(
-      "valuation_result",
-      JSON.stringify({
-        form,
-        answersArr,
-        totalScore,
-        VRI,
-        stage,
-        time: new Date().toISOString(),
-      })
-    );
-
-    // 1️⃣ SEND DATA TO BACKEND
-    const backendRes = await fetch("http://localhost:5000/api/form/submit", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        form,
-        answers: answersArr,
-      }),
-    });
-
-    const data = await backendRes.json();
-    if (!backendRes.ok) throw new Error(data.message || "Backend error");
-
-    // ✅ Save PDF URL for download button
-    setPdfUrl(data.pdfUrl || "");
-    if (data.pdfUrl) localStorage.setItem("vr_pdf_url", data.pdfUrl);
-
-    // 2️⃣ SEND EMAIL WITH DYNAMIC PDF URL
-    const templateParams = {
-      to_name: `${form.firstName} ${form.lastName}`,
-      client_email: form.email,
-
-      company_name: form.companyName,
-      founder_name: form.isFounder === "Yes" ? form.firstName : form.founderName,
-
-      vri: VRI + "%",
-      total_score: totalScore,
-      stage,
-
-      pdf_link: data.pdfUrl, // Dynamic PDF URL
-    };
-
-    await emailjs.send(
-      "service_1t71y9r",
-      "template_zxsuhue",
-      templateParams,
-      "krU3R-4YV1aa0mxp_"
-    );
-
+    setEmailLoading(true);
+    await generateReport({ action: "email" });
     alert("Report emailed successfully!");
   } catch (err) {
     console.error("Submit Error:", err);
-    alert("Something went wrong while submitting.");
+    alert(err.message || "Something went wrong while submitting.");
   } finally {
-    setLoading(false);
-    setSending(false);
+    setEmailLoading(false);
   }
 };
 	const answeredCount = answersArr.length;
@@ -297,13 +242,78 @@ const [sending, setSending] = useState(false);
   }
 };
 
+const isLive = useMemo(() => {
+  const host = window.location.hostname || "";
+  return host.includes("onrender.com") || host.includes("render.com");
+}, []);
+
+// ✅ One function to generate PDF (and optionally email)
+const generateReport = async ({ action }) => {
+  // action: "email" | "download"
+  const stage =
+    VRI <= 40
+      ? "Foundation Stage"
+      : VRI <= 60
+      ? "Structured Stage"
+      : VRI <= 80
+      ? "Scalable Stage"
+      : "Valuation Ready";
+
+  // Auto-save locally
+  localStorage.setItem(
+    "valuation_result",
+    JSON.stringify({
+      form,
+      answersArr,
+      totalScore,
+      VRI,
+      stage,
+      time: new Date().toISOString(),
+    })
+  );
+
+  const env = import.meta.env.VITE_ENV;
+const prodUrl = import.meta.env.VITE_PROD_URL;
+const localUrl = import.meta.env.VITE_LOCAL_URL;
+
+  const apiUrl = env === 'prod'
+  ? prodUrl
+  : localUrl;
+
+  const backendRes = await fetch(`${apiUrl}/api/form/submit`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      form,
+      answers: answersArr,
+      action, // ✅ tell backend what to do
+      meta: { totalScore, VRI, stage }, // optional but useful
+    }),
+  });
+
+  const data = await backendRes.json();
+  if (!backendRes.ok) throw new Error(data.message || "Backend error");
+
+  // expected: { pdfUrl: "..." }
+  if (data.pdfUrl) {
+    setPdfUrl(data.pdfUrl);
+    localStorage.setItem("vr_pdf_url", data.pdfUrl);
+  }
+
+  return data;
+};
+
 
 
 	return (
-		<div className="min-h-screen bg-base-200 p-6 flex justify-center">
-			<div className="w-full max-w-4xl bg-base-100 shadow-xl rounded-2xl p-8">
+		<div className="min-h-screen p-6 flex justify-center bg-white text-gray-900">
+  <div className="w-full max-w-4xl bg-white border border-gray-200 shadow-xl rounded-2xl p-8">
 				<div className="flex justify-between items-center mb-6">
-					<h1 className="text-2xl font-bold">Valuation Readiness Assessment</h1>
+				{step !== 3 && (
+  <div className="flex justify-between items-center mb-6">
+    <h1 className="text-2xl font-bold">Valuation Readiness Assessment</h1>
+  </div>
+)}
 
 					
 				</div>
@@ -616,135 +626,175 @@ const [sending, setSending] = useState(false);
 
   const meta = getStageMeta(VRI);
 
-  const handleDownloadPdf = () => {
-  if (!pdfUrl) return alert("PDF not ready yet. Click Email Report first.");
-  window.open(`${pdfUrl}?v=${Date.now()}`, "_blank", "noopener,noreferrer");
+  const handleDownloadPdf = async () => {
+  try {
+    setDownloadLoading(true);
+
+    const data = await generateReport({ action: "download" });
+    if (!data.pdfUrl) {
+      alert("PDF link not received from backend.");
+      return;
+    }
+
+    window.open(`${data.pdfUrl}?v=${Date.now()}`, "_blank", "noopener,noreferrer");
+  } catch (err) {
+    console.error("Download Error:", err);
+    alert(err.message || "Something went wrong while downloading.");
+  } finally {
+    setDownloadLoading(false);
+  }
 };
+
 
   return (
     <div className="max-w-4xl mx-auto">
-      {/* Force light look */}
-      <div className="bg-white border border-gray-200 rounded-2xl shadow-lg p-6 sm:p-10">
-
-        {/* Header */}
-        <div className="flex items-start justify-between gap-4">
-          <div className="flex items-center gap-4">
-            {/* Logo */}
-            <img
-              src="https://eraisedtoinfinity.com/wp-content/uploads/2025/10/einfinity-logo-final.png"
-              alt="E Raised To Infinity"
-              className="h-12 w-auto object-contain"
-            />
-            <div>
-              <h2 className="text-2xl sm:text-3xl font-extrabold text-gray-900">
-                Valuation Readiness Report
-              </h2>
-              <p className="text-sm text-gray-500">by E Raised To Infinity</p>
-            </div>
-          </div>
-
-          <div className="text-right text-sm text-gray-700">
-            <div className="font-semibold">Assessment Date</div>
-            <div className="text-gray-500">{assessmentDate}</div>
-          </div>
+  <div className="bg-white border border-gray-200 rounded-2xl shadow-lg p-6 sm:p-10">
+    {/* Header */}
+    <div className="flex items-center justify-between gap-6">
+      <div className="flex items-center gap-4">
+        <img
+          src={logo}
+          alt="E Raised To Infinity"
+          className="h-10 sm:h-12 w-auto object-contain"
+        />
+        <div className="leading-tight">
+          <h2 className="text-xl sm:text-2xl font-extrabold text-gray-900">
+            Valuation Readiness Report
+          </h2>
+          <p className="text-sm text-gray-500">by E Raised To Infinity</p>
         </div>
+      </div>
 
-        <div className="my-6 border-t border-gray-200" />
-
-        {/* Meta cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
-          <div className="border border-gray-200 rounded-2xl p-5 bg-white">
-            <div className="text-gray-500">Company</div>
-            <div className="font-semibold text-gray-900 mt-1">{form.companyName || "—"}</div>
-          </div>
-          <div className="border border-gray-200 rounded-2xl p-5 bg-white">
-            <div className="text-gray-500">Industry / Sector</div>
-            <div className="font-semibold text-gray-900 mt-1">{form.businessType || "—"}</div>
-          </div>
+      <div className="text-right">
+        <div className="text-[11px] uppercase tracking-wide text-gray-500">
+          Assessment Date
         </div>
+        <div className="text-sm font-semibold text-gray-900">{assessmentDate}</div>
+      </div>
+    </div>
 
-        {/* Intro dashed */}
-        <div className="mt-5 border border-dashed border-gray-300 rounded-2xl p-5 text-sm leading-relaxed text-gray-700 bg-white">
-          This report is generated based on responses provided by the founder through
-          the Value Enhancement Assessment, designed to evaluate strategic maturity
-          and value creation potential.
+    <div className="my-6 border-t border-gray-200" />
+
+    {/* Meta cards */}
+    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+      <div className="rounded-2xl border border-gray-200 bg-gray-50 p-5">
+        <div className="text-[11px] uppercase tracking-wide text-gray-500">Company</div>
+        <div className="mt-1 text-base font-semibold text-gray-900">
+          {form.companyName || "—"}
         </div>
+      </div>
 
-        <div className="my-8 border-t border-gray-200" />
-
-        {/* Score + Stage */}
-        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-5">
-          <div>
-            <div className="text-sm font-bold text-gray-900 mb-2">
-              Valuation Assessment Overall Score
-            </div>
-            <div className="text-6xl sm:text-5xl font-black tracking-tight text-gray-900 mt-2">
-              {VRI}%
-            </div>
-          </div>
-
-          <div className={`rounded-2xl px-6 py-5 border ${meta.border} ${meta.scoreBg}`}>
-            <div className="text-sm font-semibold text-gray-700">Chanakya Stage</div>
-            <div className="text-xl font-extrabold text-gray-900 mt-1">
-              {meta.emoji} {meta.stage}
-            </div>
-            <span className={`badge mt-3 ${meta.badgeClass}`}>{meta.modern}</span>
-          </div>
+      <div className="rounded-2xl border border-gray-200 bg-gray-50 p-5">
+        <div className="text-[11px] uppercase tracking-wide text-gray-500">
+          Industry / Sector
         </div>
-
-        {/* Meaning */}
-        <div className="mt-7 border border-gray-200 rounded-2xl p-6 bg-white">
-          <div className="text-sm font-bold text-gray-900 mb-2">What it means</div>
-          <p className="text-sm leading-relaxed text-gray-700">{meta.meaning}</p>
-        </div>
-
-        {/* Actions */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-8">
-          <button
-            className="btn btn-primary rounded-xl"
-            onClick={submitToBackendAndEmail}
-            disabled={loading || sending}
-          >
-            {loading || sending ? (
-              <>
-                <span className="loading loading-spinner mr-2"></span>
-                Sending...
-              </>
-            ) : (
-              "Email Report"
-            )}
-          </button>
-
-          <button
-            className="btn btn-outline rounded-xl"
-            onClick={handleDownloadPdf}
-            disabled={!pdfUrl}
-            title={!pdfUrl ? "Generate the PDF first by clicking Email Report" : "Download PDF"}
-          >
-            Download PDF
-          </button>
-
-          <button className="btn btn-error rounded-xl" onClick={resetAssessment}>
-            Reset Assessment
-          </button>
-        </div>
-
-        {/* Footer contact (from your instruction) */}
-        <div className="mt-10 pt-6 border-t border-gray-200 text-center text-sm text-gray-600 space-y-1">
-          <div className="font-semibold text-gray-900">Mr. Kamlesh B</div>
-          <div>
-            <a className="underline" href="mailto:kamlesh@eraisedtoinfinity.com">
-              kamlesh@eraisedtoinfinity.com
-            </a>
-          </div>
-          <div>
-            <a className="underline" href="tel:+919619415535">
-              +91 96194 15535
-            </a>
-          </div>
+        <div className="mt-1 text-base font-semibold text-gray-900">
+          {form.businessType || "—"}
         </div>
       </div>
     </div>
+
+    {/* Intro */}
+    <div className="mt-5 rounded-2xl border border-gray-200 bg-white p-5">
+      <p className="text-sm leading-relaxed text-gray-700">
+        This report is generated based on responses provided through the Value Enhancement
+        Assessment, designed to evaluate strategic maturity and value creation potential.
+      </p>
+    </div>
+
+    <div className="my-8 border-t border-gray-200" />
+
+    {/* Score + Stage */}
+    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+      <div className="rounded-2xl border border-gray-200 bg-white p-6">
+        <div className="text-[11px] uppercase tracking-wide font-bold text-black">
+          Valuation Assessment Overall Score
+        </div>
+        <div className="mt-3 flex items-end gap-2">
+          <div className="text-5xl sm:text-6xl font-black tracking-tight text-gray-900">
+            {VRI}
+          </div>
+          <div className="text-lg font-semibold text-gray-500 mb-1">%</div>
+        </div>
+        <div className="mt-2 text-sm text-gray-600">
+          Higher score indicates stronger valuation readiness.
+        </div>
+      </div>
+
+      <div className={`rounded-2xl border ${meta.border} ${meta.scoreBg} p-6`}>
+        <div className="text-[11px] uppercase tracking-wide font-bold text-black">
+          Chanakya Stage
+        </div>
+        <div className="mt-3 text-lg font-extrabold text-gray-900">
+          {meta.emoji} {meta.stage}
+        </div>
+        <div className="mt-3">
+          <span className={`badge ${meta.badgeClass}`}>{meta.modern}</span>
+        </div>
+      </div>
+    </div>
+
+    {/* Meaning */}
+    <div className="mt-6 rounded-2xl border border-gray-200 bg-gray-50 p-6">
+      <div className="text-[11px] uppercase tracking-wide font-bold text-black">
+        What it means
+      </div>
+      <p className="mt-2 text-sm leading-relaxed text-gray-700">{meta.meaning}</p>
+    </div>
+
+    {/* Actions */}
+    <div className="mt-8 flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-between">
+      <div className="flex flex-col sm:flex-row gap-3">
+        <button
+  className="btn btn-primary rounded-xl px-6"
+  onClick={submitToBackendAndEmail}
+  disabled={emailLoading}
+>
+  {emailLoading ? (
+    <>
+      <span className="loading loading-spinner mr-2"></span>
+      Sending...
+    </>
+  ) : (
+    "Email Report"
+  )}
+</button>
+
+        <button
+  className="btn btn-outline btn-primary rounded-xl px-6"
+  onClick={handleDownloadPdf}
+  disabled={downloadLoading}
+>
+  {downloadLoading ? (
+    <>
+      <span className="loading loading-spinner mr-2"></span>
+      Generating...
+    </>
+  ) : (
+    "Download PDF"
+  )}
+</button>
+      </div>
+
+      <button className="btn rounded-xl px-6" onClick={resetAssessment}>
+        Retake Assessment
+      </button>
+    </div>
+
+    {/* Footer single line */}
+    {/* <div className="mt-10 pt-6 border-t border-gray-200 text-center text-sm text-gray-600">
+      <span className="font-semibold text-gray-900">Mr. Kamlesh B</span>
+      <span className="mx-2 text-gray-300">|</span>
+      <a className="underline" href="mailto:kamlesh@eraisedtoinfinity.com">
+        kamlesh@eraisedtoinfinity.com
+      </a>
+      <span className="mx-2 text-gray-300">|</span>
+      <a className="underline" href="tel:+919619415535">
+        +91 96194 15535
+      </a>
+    </div> */}
+  </div>
+</div>
   );
 })()}
 			</div>
