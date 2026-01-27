@@ -11,9 +11,9 @@ function hexToRgb01(hex) {
 	const full =
 		h.length === 3
 			? h
-					.split("")
-					.map((c) => c + c)
-					.join("")
+				.split("")
+				.map((c) => c + c)
+				.join("")
 			: h;
 	const n = parseInt(full, 16);
 	const r = (n >> 16) & 255;

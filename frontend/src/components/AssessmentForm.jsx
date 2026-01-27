@@ -6,6 +6,7 @@ import logo from "../assets/einfinity-logo-final.png";
 import { calculateVRIFromAnswers } from "../utils/calculateScore";
 import { generateValuationPdfBlob } from "../utils/generatePdfFront";
 import { openPdfInNewTab } from "../utils/openPdf";
+import { PILLAR_CONTENT } from "../utils/pillarExplanations.js";
 
 const LS = {
 	STEP: "vr_step",
@@ -252,10 +253,10 @@ export default function AssessmentForm() {
 			VRI <= 40
 				? "Foundation Stage"
 				: VRI <= 60
-				? "Structured Stage"
-				: VRI <= 80
-				? "Scalable Stage"
-				: "Valuation Ready";
+					? "Structured Stage"
+					: VRI <= 80
+						? "Scalable Stage"
+						: "Valuation Ready";
 
 		// Auto-save locally
 		localStorage.setItem(
@@ -303,40 +304,206 @@ export default function AssessmentForm() {
 		return data;
 	};
 
-	const rows = [
-		{ pillar: "Swami (Leadership & Vision)", score: "4.0", status: "Strength" },
-		{
-			pillar: "Amatya (Management & Team)",
-			score: "2.0",
-			status: "Value Enhancement Opportunity",
-		},
-		{
-			pillar: "Janapada (Market & Customers)",
-			score: "4.0",
-			status: "Strength",
-		},
-		{
-			pillar: "Durga (Systems & Infrastructure)",
-			score: "2.0",
-			status: "Value Enhancement Opportunity",
-		},
-		{ pillar: "Kosha (Finance & Capital)", score: "3.0", status: "Strength" },
-		{
-			pillar: "Danda (Execution & Governance)",
-			score: "3.0",
-			status: "Strength",
-		},
-		{
-			pillar: "Mitra (Advisors & Alliances)",
-			score: "2.0",
-			status: "Value Enhancement Opportunity",
-		},
+
+
+	const ROADMAP_TEXT = [
+		"The Value Enhancement Roadmap is a simple and practical guide that helps business owners move beyond only focusing on day-to-day profits and start thinking about building long-term business value. Many MSME and family business owners work extremely hard to grow sales, but often do not realise that real wealth is created when the value of the business increases, not just when profits increase.",
+		"Traditionally, valuation and wealth creation through valuation were seen as concepts meant only for large corporate houses. But this is not true. MSMEs and family businesses can also create significant wealth through valuation—if they get the right direction at the right stage of their business. The Value Enhancement Roadmap provides that direction in a structured and easy-to-follow manner.",
+		"Think of this roadmap as the first step in your wealth creation journey. As the saying goes, “A journey of a thousand miles begins with a single step.” This roadmap helps you understand where your business stands today and what small but important changes can increase the value of your enterprise over time.",
+		"More importantly, it encourages founders to start thinking differently—to see their business not just as a source of income, but as a valuable asset. It plants the idea of future possibilities such as bringing investors, strategic partnerships, or even listing the business one day. It helps founders begin the journey of understanding the true value of their equity in the company.",
+		"This roadmap is based on an assessment of your business across the seven pillars of Chanakya’s Saptang, which represent the core foundations of a strong and valuable business. The assessment shows which areas of your business are already strong and which areas need improvement to support growth, scalability, and higher valuation. By working on these pillars step by step, MSME and family businesses can gradually build a stronger, more valuable, and wealth-creating enterprise.",
 	];
 
-	const badgeClass = (status) => {
-		if (status === "Strength") return "badge-success";
-		return "badge-warning";
+	const PILLARS = [
+		{ key: "Swami", label: "Swami (Leadership & Vision)" },
+		{ key: "Amatya", label: "Amatya (Management & Team)" },
+		{ key: "Janapada", label: "Janapada (Market & Customers)" },
+		{ key: "Durga", label: "Durga (Systems & Infrastructure)" },
+		{ key: "Kosha", label: "Kosha (Finance & Capital)" },
+		{ key: "Danda", label: "Danda (Execution & Governance)" },
+		{ key: "Mitra", label: "Mitra (Advisors & Alliances)" },
+	];
+
+	const calculatePillarPercentages = (answersArr) => {
+		const result = {};
+
+		// init
+		PILLARS.forEach((p) => {
+			result[p.key] = {
+				pillar: p.key,
+				total: 0,
+				percent: 0,
+				status: "",
+			};
+		});
+
+		// sum answers
+		answersArr.forEach((ans) => {
+			if (result[ans.pillar]) {
+				result[ans.pillar].total += Number(ans.score || 0);
+			}
+		});
+
+		// calculate % (max = 10)
+		Object.values(result).forEach((p) => {
+			p.percent = Math.round((p.total / 10) * 100);
+
+			p.status =
+				p.percent >= 50
+					? "Value Driver Pillar"
+					: "Value Enhancement Opportunity";
+		});
+
+		return Object.values(result);
 	};
+
+	const pillarRows = useMemo(() => {
+		return calculatePillarPercentages(answersArr);
+	}, [answersArr]);
+
+	const logPillarDebug = (questions, answersArr) => {
+		const pillarMap = {};
+
+		// init pillars
+		questions.forEach((q) => {
+			if (!pillarMap[q.pillar]) {
+				pillarMap[q.pillar] = {
+					questions: [],
+					total: 0,
+				};
+			}
+		});
+
+		// attach answers to questions
+		questions.forEach((q) => {
+			const ans = answersArr.find((a) => a.questionId === q.id);
+
+			if (pillarMap[q.pillar]) {
+				pillarMap[q.pillar].questions.push({
+					id: q.id,
+					question: q.label,
+					answer: ans?.selectedLabel ?? "NOT ANSWERED",
+					score: ans?.score ?? 0,
+				});
+
+				pillarMap[q.pillar].total += Number(ans?.score || 0);
+			}
+		});
+
+		// pretty console output
+		console.group("🧠 PILLAR DEBUG — QUESTIONS & ANSWERS");
+
+		Object.entries(pillarMap).forEach(([pillar, data]) => {
+			console.group(`🔱 ${pillar}`);
+
+			data.questions.forEach((q, i) => {
+				console.log(
+					`Q${i + 1}: ${q.question}\n→ Answer: ${q.answer}\n→ Score: ${q.score}`
+				);
+			});
+
+			const percent = Math.round((data.total / 10) * 100);
+
+			console.log("TOTAL SCORE:", data.total, "/ 10");
+			console.log("PERCENT:", percent + "%");
+			console.groupEnd();
+
+		});
+
+		console.groupEnd();
+	};
+
+
+
+	useEffect(() => {
+		if (step === 3) {
+			logPillarDebug(questions, answersArr);
+		}
+	}, [step, answersArr]);
+
+	// for the 5th section
+
+	const getExplanationType = (percent) => {
+		return percent <= 50 ? "low" : "high";
+	};
+
+	const QUESTION_PILLAR_MAP = {
+		Q1: "SWAMI",
+		Q2: "SWAMI",
+
+		Q3: "AMATYA",
+		Q4: "AMATYA",
+
+		Q5: "JANAPADA",
+		Q6: "JANAPADA",
+
+		Q7: "DURGA",
+		Q8: "DURGA",
+
+		Q9: "KOSHA",
+		Q10: "KOSHA",
+
+		Q11: "DANDA",
+		Q12: "DANDA",
+
+		Q13: "MITRA",
+		Q14: "MITRA",
+	};
+
+	const section5Data = useMemo(() => {
+		return Object.entries(PILLAR_CONTENT).map(
+			([pillarKey, pillarConfig]) => {
+				// 🔹 get pillar % from already-calculated pillarRows
+				const pillarRow = pillarRows.find(
+					(p) => p.pillar.toUpperCase() === pillarKey
+				);
+
+				const pillarPercent = pillarRow?.percent ?? 0;
+
+				// 🔹 questions inside this pillar
+				const questions = Object.entries(
+					pillarConfig.questions
+				).map(([qKey, qConfig]) => {
+					// convert "Q1" → "q1"
+					const normalizedQId = qKey.toLowerCase();
+
+					const answer = answersArr.find(
+						(a) => a.questionId === normalizedQId
+					);
+
+					// each question is out of 5
+					const questionPercent = answer
+						? Math.round((answer.score / 5) * 100)
+						: 0;
+
+					const explanationType =
+						questionPercent <= 50 ? "low" : "high";
+
+					return {
+						id: qKey,
+						questionText: qConfig.text,
+						questionPercent,
+						explanation: qConfig[explanationType],
+					};
+				});
+
+				return {
+					pillarKey,
+					label: pillarConfig.label,
+					pillarPercent,
+					status: pillarRow?.status ?? "",
+					questions,
+					summary: pillarConfig.summary,
+				};
+			}
+		);
+	}, [answersArr, pillarRows]);
+
+
+	const NEXT_STEP_TEXT =
+		"If you seek to improve your valuation, this section invites you to pause, reflect, and act with intent. Chanakya’s Roadmap to Strengthen Valuation is not a list of generic recommendations; it is a structured path rooted in the Arthashastra that helps you consciously strengthen the foundations of your enterprise before engaging investors. For each Saptang pillar, this section provides deep Chanakya Strategic Guidance explaining how Kautilya defined and viewed the pillar, the philosophical and practical role it played in sustaining a kingdom, and the leadership behaviour and institutional design expected under it. This is followed by Integrated Valuation Insights that translate ancient wisdom into investor-grade language—showing how the strength or weakness of the pillar impacts valuation, what risks arise when it is underdeveloped, and what valuation premiums emerge when it is strong. Reference Sutra(s) with their one-line meanings anchor each insight in original Arthashastra thought, ensuring conceptual integrity. Finally, the Founder Self-Assessment presents five Kautilya-aligned qualities in a reflective format, allowing you to introspect, rate yourself honestly on a 1–5 scale, and identify precise areas for improvement. Taken together, this roadmap transforms valuation from a passive outcome into an active leadership discipline, where strengthening the enterprise precedes seeking capital—and confidence replaces negotiation.";
+
+
 
 	return (
 		<div className="min-h-screen p-6 flex justify-center bg-white text-gray-900">
@@ -734,17 +901,19 @@ export default function AssessmentForm() {
 								const submission = {
 									form: { ...form, assessmentDate },
 									answers: answersArr,
-									totalScore,
 									VRI,
+									stage: meta.stage,
+									stageMeaning: meta.meaning,
+									pillars: pillarRows,
+									section5Data, // 🔥 THIS IS KEY
 									category:
 										VRI <= 40
 											? "Foundation Stage"
 											: VRI <= 60
-											? "Structured Stage"
-											: VRI <= 80
-											? "Scalable Stage"
-											: "Valuation Ready",
-									interpretation: "", // optional
+												? "Structured Stage"
+												: VRI <= 80
+													? "Scalable Stage"
+													: "Valuation Ready",
 								};
 
 								const { url } = await generateValuationPdfBlob(submission, {
@@ -765,28 +934,37 @@ export default function AssessmentForm() {
 							<div className="max-w-4xl mx-auto">
 								<div className="bg-white border border-gray-200 rounded-2xl shadow-lg p-6 sm:p-10">
 									{/* Header */}
-									<div className="flex items-center justify-between gap-6">
-										<div className="flex items-center gap-4">
+									<div className="flex items-start justify-between gap-6">
+										{/* Left Section */}
+										<div className="flex items-center gap-4 flex-1 min-w-0">
 											<img
 												src={logo}
 												alt="E Raised To Infinity"
-												className="h-10 sm:h-12 w-auto object-contain"
+												className="h-10 sm:h-12 w-auto object-contain flex-shrink-0"
 											/>
-											<div className="leading-tight">
-												<h2 className="text-xl sm:text-2xl font-extrabold text-gray-900">
+
+											<div className="leading-tight min-w-0">
+												<h2 className="text-xl sm:text-2xl font-extrabold text-gray-900 truncate">
 													Valuation Readiness Report
 												</h2>
-												<p className="text-sm text-gray-500">
+												<p className="text-sm text-gray-500 mt-1 line-clamp-2">
 													by E Raised To Infinity
+												</p>
+
+												<p className="text-sm text-gray-500 mt-1 line-clamp-2">
+													A Strategic Scorecard for Business Growth, Valuation &
+													Enterprise Wealth Creation Inspired by Chanakya’s
+													Saptang Framework
 												</p>
 											</div>
 										</div>
 
-										<div className="text-right">
+										{/* Right Section – Date */}
+										<div className="text-right flex-shrink-0">
 											<div className="text-[11px] uppercase tracking-wide text-gray-500">
 												Assessment Date
 											</div>
-											<div className="text-sm font-semibold text-gray-900">
+											<div className="text-sm font-semibold text-gray-900 whitespace-nowrap">
 												{assessmentDate}
 											</div>
 										</div>
@@ -818,9 +996,7 @@ export default function AssessmentForm() {
 									{/* Intro */}
 									<div className="mt-5 rounded-2xl border border-gray-200 bg-white p-5">
 										<p className="text-sm leading-relaxed text-gray-700">
-											This report is generated based on responses provided
-											through the Value Enhancement Assessment, designed to
-											evaluate strategic maturity and value creation potential.
+											The Valuation Enhancement Report (VER) helps you understand and increase the true value of your business. Based on Chanakya’s Saptang—the seven pillars of building strong and lasting institutions—it converts timeless strategic wisdom into practical guidance for modern businesses.
 										</p>
 									</div>
 
@@ -833,7 +1009,7 @@ export default function AssessmentForm() {
 												Valuation Assessment Overall Score
 											</div>
 											<div className="mt-3 flex items-end gap-2">
-												<div className="text-5xl sm:text-6xl font-black tracking-tight text-gray-900">
+												<div className="text-5xl sm:text-6xl font-bold tracking-tight text-gray-900">
 													{VRI}
 												</div>
 												<div className="text-lg font-semibold text-gray-500 mb-1">
@@ -873,15 +1049,25 @@ export default function AssessmentForm() {
 									</div>
 
 									<section className="mt-6 rounded-2xl border border-gray-200 bg-white p-6">
+										<h3 className="text-lg font-extrabold text-gray-900">
+											What is the Value Enhancement Roadmap and Why It
+											Matters for MSME & Family Businesses
+										</h3>
+
+										<div className="mt-3 space-y-3 text-sm leading-relaxed text-gray-700">
+											{ROADMAP_TEXT.map((p, i) => (
+												<p key={i}>{p}</p>
+											))}
+										</div>
+									</section>
+
+									{/* Section 4 - Pillar-wise Scorecard (Chanakya Saptang) */}
+									<section className="mt-6 rounded-2xl border border-gray-200 bg-white p-6">
 										<div className="flex items-start justify-between gap-4">
 											<div>
 												<h3 className="text-lg font-extrabold text-gray-900">
 													Pillar-wise Scorecard (Chanakya Saptang)
 												</h3>
-												<p className="mt-1 text-xs text-gray-500">
-													Summary view of pillar scores (1–5) and where value
-													enhancement is needed.
-												</p>
 											</div>
 										</div>
 
@@ -891,24 +1077,29 @@ export default function AssessmentForm() {
 													<tr className="text-xs text-gray-500">
 														<th className="font-semibold">Pillar</th>
 														<th className="font-semibold text-center">
-															Score (1–5)
+															Score
 														</th>
 														<th className="font-semibold">Status</th>
 													</tr>
 												</thead>
 
 												<tbody>
-													{rows.map((r) => (
+													{pillarRows.map((r) => (
 														<tr key={r.pillar} className="hover">
 															<td className="text-sm font-semibold text-gray-900">
-																{r.pillar}
+																{PILLARS.find((p) => p.key === r.pillar)?.label}
 															</td>
+
 															<td className="text-sm text-center font-semibold text-gray-900">
-																{r.score}
+																{r.percent}%
 															</td>
+
 															<td className="text-sm">
 																<span
-																	className={`badge ${badgeClass(r.status)}`}
+																	className={`badge ${r.status === "Value Driver Pillar"
+																		? "badge-success"
+																		: "badge-warning"
+																		}`}
 																>
 																	{r.status}
 																</span>
@@ -920,87 +1111,107 @@ export default function AssessmentForm() {
 										</div>
 									</section>
 
-									<div className="mt-8 space-y-6">
-										{/* Strategic Analysis */}
-										<section className="rounded-2xl border border-gray-200 bg-white p-6">
-											<h3 className="text-lg font-extrabold text-gray-900">
-												Strategic Analysis
-											</h3>
-											<div className="mt-3 space-y-3 text-sm leading-relaxed text-gray-700">
-												<p>
-													This assessment evaluates your business across the
-													seven strategic pillars of Chanakya’s Saptang, each of
-													which directly influences long-term business
-													valuation.
-												</p>
-												<p>
-													Your scores indicate that while leadership vision,
-													market opportunity, and financial discipline are
-													strong, certain structural pillars need strengthening
-													to fully support scalable growth and higher valuation
-													multiples.
-												</p>
+
+
+
+									<section className="mt-14">
+										<h1 className="text-2xl font-bold mb-10">
+											Valuation Enhancement Analysis of Your Company
+										</h1>
+
+										{section5Data.map((pillar) => (
+											<div key={pillar.pillarKey} className="mb-16">
+												{/* Pillar Header */}
+												<div className="mb-6">
+													<h2 className="text-xl font-semibold mb-1">
+														{pillar.label}
+													</h2>
+
+													<div className="flex items-center gap-3 text-sm text-gray-600">
+														<span className="px-3 py-1 rounded-full bg-gray-100 font-medium">
+															Pillar Score: {pillar.pillarPercent}%
+														</span>
+														<span>•</span>
+														<span className="font-medium">{pillar.status}</span>
+													</div>
+												</div>
+
+												{/* Questions */}
+												<div className="space-y-8">
+													{pillar.questions.map((q, index) => (
+														<div
+															key={q.id}
+															className="p-5 bg-white rounded-lg border border-gray-200"
+														>
+															{/* Question Header */}
+															<div className="flex items-start gap-4 mb-3">
+																<span className="shrink-0 px-3 py-1 text-sm font-semibold rounded bg-primary text-white">
+																	{q.id}
+																</span>
+
+																<h4 className="font-medium text-gray-900">
+																	{q.questionText}
+																</h4>
+															</div>
+
+															{/* Insight */}
+															<div className="mb-3 text-gray-700">
+																<p>{q.explanation.body}</p>
+															</div>
+
+															{/* Valuation Perspective */}
+															<div className="mb-4 text-gray-700 italic">
+																<strong className="not-italic">
+																	Valuation perspective:
+																</strong>{" "}
+																{q.explanation.valuation}
+															</div>
+
+															{/* Tag */}
+															<span className="inline-block text-xs text-white px-3 py-1 rounded-full bg-primary font-medium">
+																👉 {q.explanation.tag}
+															</span>
+														</div>
+													))}
+												</div>
+
+												{/* Pillar Summary */}
+												<div className="mt-8 p-5 bg-gray-50 rounded-lg border-l-4 border-primary">
+													<p className="font-medium mb-1">Pillar Summary</p>
+													<p className="text-gray-700">{pillar.summary}</p>
+												</div>
 											</div>
-										</section>
+										))}
+									</section>
 
-										{/* Valuation Enhancement Analysis */}
-										<section className="rounded-2xl border border-gray-200 bg-white p-6">
-											<h3 className="text-lg font-extrabold text-gray-900">
-												Valuation Enhancement Analysis
-											</h3>
-											<div className="mt-3 space-y-3 text-sm leading-relaxed text-gray-700">
-												<p>
-													Your vision and market opportunity are strong, but
-													management and systems need strengthening to unlock
-													higher valuation.
-												</p>
-												<p>
-													Market demand exists, yet process digitization and
-													delegation are required to scale efficiently.
-												</p>
-												<p>
-													Financial readiness is present, but advisory support
-													will significantly enhance investor confidence.
-												</p>
-											</div>
-										</section>
 
-										{/* Priority Value Enhancement Actions */}
-										<section className="rounded-2xl border border-gray-200 bg-white p-6">
-											<ul className="mt-4 space-y-3 text-sm text-gray-800">
-												<li className="flex items-start gap-3">
-													<span className="mt-1 inline-block h-2.5 w-2.5 rounded-full bg-green-500" />
-													<span className="font-semibold">
-														Priority Value Enhancement Actions
-													</span>
-												</li>
-												<li className="flex items-start gap-3">
-													<span className="mt-1 inline-block h-2.5 w-2.5 rounded-full bg-green-500" />
-													<span className="font-semibold">
-														Value Enhancement Roadmap (Next Phase)
-													</span>
-												</li>
-												<li className="flex items-start gap-3">
-													<span className="mt-1 inline-block h-2.5 w-2.5 rounded-full bg-green-500" />
-													<span className="font-semibold">
-														Recommended Next Step
-													</span>
-												</li>
-											</ul>
-										</section>
+									{/* Section 6 */}
+									<section className="mt-8 rounded-2xl border border-gray-200 bg-white p-6">
+										<h3 className="text-lg font-extrabold text-gray-900">
+											Recommended Next Step: Chanakya’s Strategic Roadmap to
+											Strengthen Valuation
+										</h3>
 
-										{/* Closing Thought */}
-										<section className="rounded-2xl border border-gray-200 bg-gray-50 p-6">
-											<h3 className="text-lg font-extrabold text-gray-900">
-												Closing Thought
-											</h3>
-											<p className="mt-3 text-sm leading-relaxed text-gray-700">
-												Valuation is not just about today’s profit — it’s about
-												building a business that can scale beyond the founder,
-												run on systems, and earn investor-grade confidence.
-											</p>
-										</section>
-									</div>
+										<p className="mt-3 text-sm leading-relaxed text-gray-700">
+											{NEXT_STEP_TEXT}
+										</p>
+									</section>
+
+
+									{/* Section 7 */}
+									<section className="mt-8 rounded-2xl border border-gray-200 bg-gray-50 p-6">
+										<h3 className="text-lg font-extrabold text-gray-900">
+											Final Closing Insight
+										</h3>
+
+										<p className="mt-3 text-sm leading-relaxed text-gray-700">
+											Valuation improves when each strength is consciously
+											leveraged and each enhancement area is addressed before
+											capital conversations begin.
+										</p>
+									</section>
+
+
 
 									{/* Actions */}
 									<div className="mt-8 flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-between">
@@ -1022,7 +1233,7 @@ export default function AssessmentForm() {
 
 											<button
 												className="btn btn-outline btn-primary rounded-xl px-6"
-												onClick={handleDownloadPdf}
+												onClick={() => window.print()}
 												disabled={downloadLoading}
 											>
 												{downloadLoading ? (
